@@ -1,38 +1,47 @@
-const fs = require('fs');
-const fsPromises = require('fs/promises');
-const mime = require('mime');
-const nullthrows = require('nullthrows');
-const path = require('path');
+const fs = require("fs");
+const fsPromises = require("fs/promises");
+const mime = require("mime");
+const nullthrows = require("nullthrows");
+const path = require("path");
 
 const {
   getLatestUpdateBundlePathForRuntimeVersionAsync,
   getMetadataAsync,
-} = require('../../common/helpers');
+} = require("../../common/helpers");
 
 async function assetsEndpoint(req, res) {
   const { asset: assetName, runtimeVersion, platform } = req.query;
 
-  if (!assetName || typeof assetName !== 'string') {
+  console.warn("--- Asset Request Received ---");
+  console.warn({
+    asset: assetName,
+    runtimeVersion,
+    platform,
+  });
+
+  if (!assetName || typeof assetName !== "string") {
     res.statusCode = 400;
-    res.json({ error: 'No asset name provided.' });
+    res.json({ error: "No asset name provided." });
     return;
   }
 
-  if (platform !== 'android') {
+  if (platform !== "android") {
     res.statusCode = 400;
     res.json({ error: 'No platform provided. Expected "android".' });
     return;
   }
 
-  if (!runtimeVersion || typeof runtimeVersion !== 'string') {
+  if (!runtimeVersion || typeof runtimeVersion !== "string") {
     res.statusCode = 400;
-    res.json({ error: 'No runtimeVersion provided.' });
+    res.json({ error: "No runtimeVersion provided." });
     return;
   }
 
   let updateBundlePath;
   try {
-    updateBundlePath = await getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion);
+    updateBundlePath = await getLatestUpdateBundlePathForRuntimeVersionAsync(
+      runtimeVersion
+    );
   } catch (error) {
     res.statusCode = 404;
     res.json({
@@ -48,10 +57,11 @@ async function assetsEndpoint(req, res) {
 
   const assetPath = path.resolve(assetName);
   const assetMetadata = metadataJson.fileMetadata[platform].assets.find(
-    (asset) => asset.path === assetName.replace(`${updateBundlePath}/`, '')
+    (asset) => asset.path === assetName.replace(`${updateBundlePath}/`, "")
   );
   const isLaunchAsset =
-    metadataJson.fileMetadata[platform].bundle === assetName.replace(`${updateBundlePath}/`, '');
+    metadataJson.fileMetadata[platform].bundle ===
+    assetName.replace(`${updateBundlePath}/`, "");
 
   if (!fs.existsSync(assetPath)) {
     res.statusCode = 404;
@@ -64,8 +74,10 @@ async function assetsEndpoint(req, res) {
 
     res.statusCode = 200;
     res.setHeader(
-      'content-type',
-      isLaunchAsset ? 'application/javascript' : nullthrows(mime.getType(assetMetadata.ext))
+      "content-type",
+      isLaunchAsset
+        ? "application/javascript"
+        : nullthrows(mime.getType(assetMetadata.ext))
     );
     res.end(asset);
   } catch (error) {
