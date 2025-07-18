@@ -52,11 +52,15 @@ async function getPrivateKeyAsync() {
 async function githubFetch(url) {
   const headers = {
     "User-Agent": "expo-ota-server",
+    "Cache-Control": "no-cache",
   };
   if (GITHUB_TOKEN) {
     headers.Authorization = `token ${GITHUB_TOKEN}`;
   }
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, {
+    headers,
+    cache: "no-store",
+  });
 
   if (!res.ok) {
     const text = await res.text();
