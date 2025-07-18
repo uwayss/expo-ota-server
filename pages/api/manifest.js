@@ -1,5 +1,6 @@
 const FormData = require('form-data');
 const fs = require('fs/promises');
+const path = require('path');
 const { serializeDictionary } = require('structured-headers');
 
 const {
@@ -33,13 +34,16 @@ async function putUpdateInResponseAsync(
   runtimeVersion,
   platform,
   protocolVersion,
-  serverAddress
+  serverAddress,
+  timestamp
 ) {
   const currentUpdateId = req.headers['expo-current-update-id'];
-  const { metadataJson, createdAt, id } = await getMetadataAsync({
+  const { metadataJson, id } = await getMetadataAsync({
     updateBundlePath,
     runtimeVersion,
   });
+
+  const createdAt = new Date(timestamp).toISOString();
 
   if (currentUpdateId === convertSHA256HashToUUID(id) && protocolVersion === 1) {
     throw new NoUpdateAvailableError();
@@ -236,7 +240,7 @@ async function manifestEndpoint(req, res) {
     res.json({ error: 'Expected GET.' });
     return;
   }
-console.warn("got a request")
+
   const protocol = req.headers['x-forwarded-proto'] || 'http';
   const host = req.headers['host'];
   const serverAddress = `${protocol}://${host}`;
@@ -280,12 +284,12 @@ console.warn("got a request")
     return;
   }
 
+  const timestamp = parseInt(updateBundlePath.split(path.sep)[2], 10);
   const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
   try {
     try {
       if (updateType === UpdateType.NORMAL_UPDATE) {
-        console.warn("delivered normal update")
         await putUpdateInResponseAsync(
           req,
           res,
@@ -293,10 +297,10 @@ console.warn("got a request")
           runtimeVersion,
           platform,
           protocolVersion,
-          serverAddress
+          serverAddress,
+          timestamp
         );
       } else if (updateType === UpdateType.ROLLBACK) {
-        console.warn("delivered rollback update")
         await putRollBackInResponseAsync(req, res, updateBundlePath, protocolVersion);
       }
     } catch (maybeNoUpdateAvailableError) {

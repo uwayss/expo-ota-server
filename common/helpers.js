@@ -103,11 +103,9 @@ async function getMetadataAsync({ updateBundlePath, runtimeVersion }) {
     const metadataPath = `${updateBundlePath}/metadata.json`;
     const updateMetadataBuffer = await fs.readFile(path.resolve(metadataPath), null);
     const metadataJson = JSON.parse(updateMetadataBuffer.toString('utf-8'));
-    const metadataStat = await fs.stat(metadataPath);
 
     return {
       metadataJson,
-      createdAt: new Date(metadataStat.birthtime).toISOString(),
       id: createHash(updateMetadataBuffer, 'sha256', 'hex'),
     };
   } catch (error) {
