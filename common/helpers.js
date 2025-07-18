@@ -69,28 +69,33 @@ async function githubFetch(url) {
 
 async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion) {
   const contentsUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/updates/${runtimeVersion}`;
-  const directories = await githubFetch(contentsUrl);
+  try {
+    const directories = await githubFetch(contentsUrl);
 
-  if (!Array.isArray(directories) || directories.length === 0) {
-    throw new Error(`Unsupported runtime version: ${runtimeVersion}`);
+    if (!Array.isArray(directories) || directories.length === 0) {
+      throw new Error(`Unsupported runtime version: ${runtimeVersion}`);
+    }
+
+    const sortedTimestamps = directories
+      .filter((dir) => dir.type === "dir")
+      .map((dir) => parseInt(dir.name, 10))
+      .sort((a, b) => b - a);
+
+    if (sortedTimestamps.length === 0) {
+      throw new Error(
+        `No valid update directories found for runtime version: ${runtimeVersion}`
+      );
+    }
+
+    return `updates/${runtimeVersion}/${sortedTimestamps[0]}`;
+  } catch {
+    throw new Error(`No updates found for runtime version: ${runtimeVersion}`);
   }
-
-  const sortedTimestamps = directories
-    .filter((dir) => dir.type === "dir")
-    .map((dir) => parseInt(dir.name, 10))
-    .sort((a, b) => b - a);
-
-  if (sortedTimestamps.length === 0) {
-    throw new Error(
-      `No valid update directories found for runtime version: ${runtimeVersion}`
-    );
-  }
-
-  return `updates/${runtimeVersion}/${sortedTimestamps[0]}`;
 }
 
 async function getAssetMetadataAsync(arg) {
-  const rawAssetUrl = `${GITHUB_RAW_URL}/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/main/${arg.updateBundlePath}/${arg.filePath}`;
+  const assetFullPath = `${arg.updateBundlePath}/${arg.filePath}`;
+  const rawAssetUrl = `${GITHUB_RAW_URL}/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/main/${assetFullPath}`;
   const response = await fetch(rawAssetUrl);
   const asset = await response.buffer();
 
@@ -99,29 +104,27 @@ async function getAssetMetadataAsync(arg) {
   const keyExtensionSuffix = arg.isLaunchAsset ? "bundle" : arg.ext;
   const contentType = arg.isLaunchAsset
     ? "application/javascript"
-    : mime.getType(arg.ext);
+    : mime.getType(arg.ext) || "application/octet-stream";
 
-  const assetQuery = Buffer.from(
-    `${arg.updateBundlePath}/${arg.filePath}`
-  ).toString("base64");
+  const assetQuery = Buffer.from(assetFullPath).toString("base64");
 
   return {
     hash: assetHash,
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url: `${arg.serverAddress}/api/assets?asset=${assetQuery}&platform=${arg.platform}`,
+    url: `${arg.serverAddress}/api/assets?asset=${assetQuery}&platform=${arg.platform}&runtimeVersion=${arg.runtimeVersion}`,
   };
 }
 
 async function createRollBackDirectiveAsync(updateBundlePath) {
   const rollbackFileUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/${updateBundlePath}/rollback`;
   try {
-    const rollbackFileMetadata = await githubFetch(rollbackFileUrl);
+    await githubFetch(rollbackFileUrl);
     return {
       type: "rollBackToEmbedded",
       parameters: {
-        commitTime: new Date().toISOString(), // Cannot get file birthtime from GitHub API
+        commitTime: new Date().toISOString(),
       },
     };
   } catch (error) {
@@ -158,7 +161,7 @@ async function getMetadataAsync({ updateBundlePath, runtimeVersion }) {
     };
   } catch (error) {
     throw new Error(
-      `No update found with runtime version: ${runtimeVersion}. Error: ${error.message}`
+      `No metadata found for runtime version: ${runtimeVersion}. Error: ${error.message}`
     );
   }
 }
@@ -172,7 +175,7 @@ async function getExpoConfigAsync({ updateBundlePath, runtimeVersion }) {
     return await response.json();
   } catch (error) {
     throw new Error(
-      `No expo config json found with runtime version: ${runtimeVersion}. Error: ${error.message}`
+      `No expo config found for runtime version: ${runtimeVersion}. Error: ${error.message}`
     );
   }
 }
