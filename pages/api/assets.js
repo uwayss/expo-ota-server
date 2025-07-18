@@ -1,4 +1,3 @@
-
 const fs = require('fs');
 const fsPromises = require('fs/promises');
 const mime = require('mime');
@@ -10,7 +9,7 @@ const {
   getMetadataAsync,
 } = require('../../common/helpers');
 
-export default async function assetsEndpoint(req, res) {
+async function assetsEndpoint(req, res) {
   const { asset: assetName, runtimeVersion, platform } = req.query;
 
   if (!assetName || typeof assetName !== 'string') {
@@ -19,9 +18,9 @@ export default async function assetsEndpoint(req, res) {
     return;
   }
 
-  if (platform !== 'ios' && platform !== 'android') {
+  if (platform !== 'android') {
     res.statusCode = 400;
-    res.json({ error: 'No platform provided. Expected "ios" or "android".' });
+    res.json({ error: 'No platform provided. Expected "android".' });
     return;
   }
 
@@ -75,3 +74,5 @@ export default async function assetsEndpoint(req, res) {
     res.json({ error });
   }
 }
+
+module.exports = assetsEndpoint;
