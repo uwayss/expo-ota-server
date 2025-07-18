@@ -236,7 +236,7 @@ async function manifestEndpoint(req, res) {
     res.json({ error: 'Expected GET.' });
     return;
   }
-console.log("got a request")
+console.warn("got a request")
   const protocol = req.headers['x-forwarded-proto'] || 'http';
   const host = req.headers['host'];
   const serverAddress = `${protocol}://${host}`;
@@ -285,7 +285,7 @@ console.log("got a request")
   try {
     try {
       if (updateType === UpdateType.NORMAL_UPDATE) {
-        console.log("delivered normal update")
+        console.warn("delivered normal update")
         await putUpdateInResponseAsync(
           req,
           res,
@@ -296,7 +296,7 @@ console.log("got a request")
           serverAddress
         );
       } else if (updateType === UpdateType.ROLLBACK) {
-        console.log("delivered rollback update")
+        console.warn("delivered rollback update")
         await putRollBackInResponseAsync(req, res, updateBundlePath, protocolVersion);
       }
     } catch (maybeNoUpdateAvailableError) {
