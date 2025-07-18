@@ -1,89 +1,47 @@
-const fs = require("fs");
-const fsPromises = require("fs/promises");
 const mime = require("mime");
+const fetch = require("node-fetch");
 const nullthrows = require("nullthrows");
-const path = require("path");
 
-const {
-  getLatestUpdateBundlePathForRuntimeVersionAsync,
-  getMetadataAsync,
-} = require("../../common/helpers");
+const UPDATES_REPO_OWNER = "uwayss";
+const UPDATES_REPO_NAME = "easyweather-updates";
+const GITHUB_RAW_URL = "https://raw.githubusercontent.com";
 
 async function assetsEndpoint(req, res) {
-  const { asset: assetName, runtimeVersion, platform } = req.query;
+  const { asset } = req.query;
 
-  console.warn("--- Asset Request Received ---");
-  console.warn({
-    asset: assetName,
-    runtimeVersion,
-    platform,
-  });
-
-  if (!assetName || typeof assetName !== "string") {
+  if (!asset || typeof asset !== "string") {
     res.statusCode = 400;
     res.json({ error: "No asset name provided." });
     return;
   }
 
-  if (platform !== "android") {
-    res.statusCode = 400;
-    res.json({ error: 'No platform provided. Expected "android".' });
-    return;
-  }
+  const assetPath = Buffer.from(asset, "base64").toString("utf-8");
+  const isLaunchAsset = assetPath.endsWith(".bundle");
+  const ext = assetPath.split(".").pop();
 
-  if (!runtimeVersion || typeof runtimeVersion !== "string") {
-    res.statusCode = 400;
-    res.json({ error: "No runtimeVersion provided." });
-    return;
-  }
-
-  let updateBundlePath;
-  try {
-    updateBundlePath = await getLatestUpdateBundlePathForRuntimeVersionAsync(
-      runtimeVersion
-    );
-  } catch (error) {
-    res.statusCode = 404;
-    res.json({
-      error: error.message,
-    });
-    return;
-  }
-
-  const { metadataJson } = await getMetadataAsync({
-    updateBundlePath,
-    runtimeVersion,
-  });
-
-  const assetPath = path.resolve(assetName);
-  const assetMetadata = metadataJson.fileMetadata[platform].assets.find(
-    (asset) => asset.path === assetName.replace(`${updateBundlePath}/`, "")
-  );
-  const isLaunchAsset =
-    metadataJson.fileMetadata[platform].bundle ===
-    assetName.replace(`${updateBundlePath}/`, "");
-
-  if (!fs.existsSync(assetPath)) {
-    res.statusCode = 404;
-    res.json({ error: `Asset "${assetName}" does not exist.` });
-    return;
-  }
+  const assetUrl = `${GITHUB_RAW_URL}/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/main/${assetPath}`;
 
   try {
-    const asset = await fsPromises.readFile(assetPath, null);
+    const response = await fetch(assetUrl);
+    if (!response.ok) {
+      res.statusCode = response.status;
+      res.json({
+        error: `Failed to fetch asset from GitHub: ${response.statusText}`,
+      });
+      return;
+    }
+
+    const contentType = isLaunchAsset
+      ? "application/javascript"
+      : nullthrows(mime.getType(ext));
 
     res.statusCode = 200;
-    res.setHeader(
-      "content-type",
-      isLaunchAsset
-        ? "application/javascript"
-        : nullthrows(mime.getType(assetMetadata.ext))
-    );
-    res.end(asset);
+    res.setHeader("content-type", contentType);
+    response.body.pipe(res);
   } catch (error) {
     console.log(error);
     res.statusCode = 500;
-    res.json({ error });
+    res.json({ error: error.message });
   }
 }
 

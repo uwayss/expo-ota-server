@@ -6,13 +6,13 @@
     "dev": "PRIVATE_KEY_PATH=code-signing-keys/private-key.pem next dev",
     "build": "next build",
     "start": "PRIVATE_KEY_PATH=code-signing-keys/private-key.pem next start",
-    "lint": "eslint common pages",
-    "publish": "node ./scripts/publish.js"
+    "lint": "eslint common pages"
   },
   "dependencies": {
     "form-data": "^4.0.0",
     "mime": "^2.5.2",
     "next": "12",
+    "node-fetch": "^2.6.7",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "structured-headers": "^0.4.1"

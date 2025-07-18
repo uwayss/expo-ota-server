@@ -1,6 +1,5 @@
 const FormData = require("form-data");
-const fs = require("fs/promises");
-const path = require("path");
+const fetch = require("node-fetch");
 const { serializeDictionary } = require("structured-headers");
 
 const {
@@ -17,16 +16,25 @@ const {
   createNoUpdateAvailableDirectiveAsync,
 } = require("../../common/helpers");
 
+const UPDATES_REPO_OWNER = "uwayss";
+const UPDATES_REPO_NAME = "easyweather-updates";
+const GITHUB_API_URL = "https://api.github.com";
+
 const UpdateType = {
   NORMAL_UPDATE: 0,
   ROLLBACK: 1,
 };
 
 async function getTypeOfUpdateAsync(updateBundlePath) {
-  const directoryContents = await fs.readdir(updateBundlePath);
-  return directoryContents.includes("rollback")
-    ? UpdateType.ROLLBACK
-    : UpdateType.NORMAL_UPDATE;
+  const contentsUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/${updateBundlePath}`;
+  const response = await fetch(contentsUrl, {
+    headers: { Authorization: `token ${process.env.GITHUB_TOKEN}` },
+  });
+  const directoryContents = await response.json();
+  const hasRollback =
+    Array.isArray(directoryContents) &&
+    directoryContents.some((file) => file.name === "rollback");
+  return hasRollback ? UpdateType.ROLLBACK : UpdateType.NORMAL_UPDATE;
 }
 
 async function putUpdateInResponseAsync(
@@ -36,8 +44,7 @@ async function putUpdateInResponseAsync(
   runtimeVersion,
   platform,
   protocolVersion,
-  serverAddress,
-  timestamp
+  serverAddress
 ) {
   const currentUpdateId = req.headers["expo-current-update-id"];
   const { metadataJson, id } = await getMetadataAsync({
@@ -45,6 +52,7 @@ async function putUpdateInResponseAsync(
     runtimeVersion,
   });
 
+  const timestamp = parseInt(updateBundlePath.split("/").pop(), 10);
   const createdAt = new Date(timestamp).toISOString();
 
   if (
@@ -271,14 +279,6 @@ async function manifestEndpoint(req, res) {
   const host = req.headers["host"];
   const serverAddress = `${protocol}://${host}`;
 
-  console.warn("--- Manifest Request Received ---");
-  console.warn({
-    platform: req.headers["expo-platform"],
-    runtimeVersion: req.headers["expo-runtime-version"],
-    currentUpdateId: req.headers["expo-current-update-id"],
-    serverAddress,
-  });
-
   const protocolVersionMaybeArray = req.headers["expo-protocol-version"];
   if (protocolVersionMaybeArray && Array.isArray(protocolVersionMaybeArray)) {
     res.statusCode = 400;
@@ -308,54 +308,37 @@ async function manifestEndpoint(req, res) {
     return;
   }
 
-  let updateBundlePath;
   try {
-    updateBundlePath = await getLatestUpdateBundlePathForRuntimeVersionAsync(
-      runtimeVersion
-    );
-  } catch (error) {
-    res.statusCode = 404;
-    res.json({
-      error: error.message,
-    });
-    return;
-  }
+    const updateBundlePath =
+      await getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion);
+    const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
-  const timestamp = parseInt(updateBundlePath.split(path.sep)[2], 10);
-  const updateType = await getTypeOfUpdateAsync(updateBundlePath);
-
-  try {
-    try {
-      if (updateType === UpdateType.NORMAL_UPDATE) {
-        await putUpdateInResponseAsync(
-          req,
-          res,
-          updateBundlePath,
-          runtimeVersion,
-          platform,
-          protocolVersion,
-          serverAddress,
-          timestamp
-        );
-      } else if (updateType === UpdateType.ROLLBACK) {
-        await putRollBackInResponseAsync(
-          req,
-          res,
-          updateBundlePath,
-          protocolVersion
-        );
-      }
-    } catch (maybeNoUpdateAvailableError) {
-      if (maybeNoUpdateAvailableError instanceof NoUpdateAvailableError) {
-        await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
-        return;
-      }
-      throw maybeNoUpdateAvailableError;
+    if (updateType === UpdateType.NORMAL_UPDATE) {
+      await putUpdateInResponseAsync(
+        req,
+        res,
+        updateBundlePath,
+        runtimeVersion,
+        platform,
+        protocolVersion,
+        serverAddress
+      );
+    } else if (updateType === UpdateType.ROLLBACK) {
+      await putRollBackInResponseAsync(
+        req,
+        res,
+        updateBundlePath,
+        protocolVersion
+      );
     }
   } catch (error) {
-    console.error(error);
-    res.statusCode = 404;
-    res.json({ error });
+    if (error instanceof NoUpdateAvailableError) {
+      await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
+    } else {
+      console.error(error);
+      res.statusCode = 404;
+      res.json({ error: error.message });
+    }
   }
 }
 

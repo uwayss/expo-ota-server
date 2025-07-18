@@ -1,8 +1,16 @@
+// FILE: common/helpers.js
 const crypto = require("crypto");
 const fsSync = require("fs");
 const fs = require("fs/promises");
 const mime = require("mime");
+const fetch = require("node-fetch");
 const path = require("path");
+
+const { GITHUB_TOKEN } = process.env;
+const UPDATES_REPO_OWNER = "uwayss";
+const UPDATES_REPO_NAME = "easyweather-updates";
+const GITHUB_API_URL = "https://api.github.com";
+const GITHUB_RAW_URL = "https://raw.githubusercontent.com";
 
 class NoUpdateAvailableError extends Error {}
 
@@ -34,44 +42,58 @@ function signRSASHA256(data, privateKey) {
 
 async function getPrivateKeyAsync() {
   const privateKeyPath = process.env.PRIVATE_KEY_PATH;
-  if (!privateKeyPath) {
+  if (!privateKeyPath || !fsSync.existsSync(privateKeyPath)) {
     return null;
   }
-
   const pemBuffer = await fs.readFile(path.resolve(privateKeyPath));
   return pemBuffer.toString("utf8");
 }
 
+async function githubFetch(url) {
+  const headers = {
+    "User-Agent": "expo-ota-server",
+  };
+  if (GITHUB_TOKEN) {
+    headers.Authorization = `token ${GITHUB_TOKEN}`;
+  }
+  const res = await fetch(url, { headers });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(
+      `GitHub API request failed: ${res.status} ${res.statusText}\n${text}`
+    );
+  }
+  return res.json();
+}
+
 async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion) {
-  const updatesDirectoryForRuntimeVersion = `updates/${runtimeVersion}`;
-  if (!fsSync.existsSync(updatesDirectoryForRuntimeVersion)) {
-    throw new Error("Unsupported runtime version");
+  const contentsUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/updates/${runtimeVersion}`;
+  const directories = await githubFetch(contentsUrl);
+
+  if (!Array.isArray(directories) || directories.length === 0) {
+    throw new Error(`Unsupported runtime version: ${runtimeVersion}`);
   }
 
-  const filesInUpdatesDirectory = await fs.readdir(
-    updatesDirectoryForRuntimeVersion
-  );
-  const directoriesInUpdatesDirectory = (
-    await Promise.all(
-      filesInUpdatesDirectory.map(async (file) => {
-        const fileStat = await fs.stat(
-          path.join(updatesDirectoryForRuntimeVersion, file)
-        );
-        return fileStat.isDirectory() ? file : null;
-      })
-    )
-  )
-    .filter(truthy)
-    .sort((a, b) => parseInt(b, 10) - parseInt(a, 10));
-  return path.join(
-    updatesDirectoryForRuntimeVersion,
-    directoriesInUpdatesDirectory[0]
-  );
+  const sortedTimestamps = directories
+    .filter((dir) => dir.type === "dir")
+    .map((dir) => parseInt(dir.name, 10))
+    .sort((a, b) => b - a);
+
+  if (sortedTimestamps.length === 0) {
+    throw new Error(
+      `No valid update directories found for runtime version: ${runtimeVersion}`
+    );
+  }
+
+  return `updates/${runtimeVersion}/${sortedTimestamps[0]}`;
 }
 
 async function getAssetMetadataAsync(arg) {
-  const assetFilePath = `${arg.updateBundlePath}/${arg.filePath}`;
-  const asset = await fs.readFile(path.resolve(assetFilePath), null);
+  const rawAssetUrl = `${GITHUB_RAW_URL}/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/main/${arg.updateBundlePath}/${arg.filePath}`;
+  const response = await fetch(rawAssetUrl);
+  const asset = await response.buffer();
+
   const assetHash = getBase64URLEncoding(createHash(asset, "sha256", "base64"));
   const key = createHash(asset, "md5", "hex");
   const keyExtensionSuffix = arg.isLaunchAsset ? "bundle" : arg.ext;
@@ -79,27 +101,31 @@ async function getAssetMetadataAsync(arg) {
     ? "application/javascript"
     : mime.getType(arg.ext);
 
+  const assetQuery = Buffer.from(
+    `${arg.updateBundlePath}/${arg.filePath}`
+  ).toString("base64");
+
   return {
     hash: assetHash,
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url: `${arg.serverAddress}/api/assets?asset=${assetFilePath}&runtimeVersion=${arg.runtimeVersion}&platform=${arg.platform}`,
+    url: `${arg.serverAddress}/api/assets?asset=${assetQuery}&platform=${arg.platform}`,
   };
 }
 
 async function createRollBackDirectiveAsync(updateBundlePath) {
+  const rollbackFileUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/${updateBundlePath}/rollback`;
   try {
-    const rollbackFilePath = `${updateBundlePath}/rollback`;
-    const rollbackFileStat = await fs.stat(rollbackFilePath);
+    const rollbackFileMetadata = await githubFetch(rollbackFileUrl);
     return {
       type: "rollBackToEmbedded",
       parameters: {
-        commitTime: new Date(rollbackFileStat.birthtime).toISOString(),
+        commitTime: new Date().toISOString(), // Cannot get file birthtime from GitHub API
       },
     };
   } catch (error) {
-    throw new Error(`No rollback found. Error: ${error}`);
+    throw new Error(`No rollback found. Error: ${error.message}`);
   }
 }
 
@@ -109,38 +135,44 @@ async function createNoUpdateAvailableDirectiveAsync() {
   };
 }
 
+async function fetchFromUpdateBundle(updateBundlePath, fileName) {
+  const url = `${GITHUB_RAW_URL}/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/main/${updateBundlePath}/${fileName}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${fileName}: ${response.statusText}`);
+  }
+  return response;
+}
+
 async function getMetadataAsync({ updateBundlePath, runtimeVersion }) {
   try {
-    const metadataPath = `${updateBundlePath}/metadata.json`;
-    const updateMetadataBuffer = await fs.readFile(
-      path.resolve(metadataPath),
-      null
+    const response = await fetchFromUpdateBundle(
+      updateBundlePath,
+      "metadata.json"
     );
+    const updateMetadataBuffer = await response.buffer();
     const metadataJson = JSON.parse(updateMetadataBuffer.toString("utf-8"));
-
     return {
       metadataJson,
       id: createHash(updateMetadataBuffer, "sha256", "hex"),
     };
   } catch (error) {
     throw new Error(
-      `No update found with runtime version: ${runtimeVersion}. Error: ${error}`
+      `No update found with runtime version: ${runtimeVersion}. Error: ${error.message}`
     );
   }
 }
 
 async function getExpoConfigAsync({ updateBundlePath, runtimeVersion }) {
   try {
-    const expoConfigPath = `${updateBundlePath}/expoConfig.json`;
-    const expoConfigBuffer = await fs.readFile(
-      path.resolve(expoConfigPath),
-      null
+    const response = await fetchFromUpdateBundle(
+      updateBundlePath,
+      "expoConfig.json"
     );
-    const expoConfigJson = JSON.parse(expoConfigBuffer.toString("utf-8"));
-    return expoConfigJson;
+    return await response.json();
   } catch (error) {
     throw new Error(
-      `No expo config json found with runtime version: ${runtimeVersion}. Error: ${error}`
+      `No expo config json found with runtime version: ${runtimeVersion}. Error: ${error.message}`
     );
   }
 }
