@@ -1,16 +1,16 @@
-import fs from 'fs';
-import fsPromises from 'fs/promises';
-import mime from 'mime';
-import { NextApiRequest, NextApiResponse } from 'next';
-import nullthrows from 'nullthrows';
-import path from 'path';
 
-import {
+const fs = require('fs');
+const fsPromises = require('fs/promises');
+const mime = require('mime');
+const nullthrows = require('nullthrows');
+const path = require('path');
+
+const {
   getLatestUpdateBundlePathForRuntimeVersionAsync,
   getMetadataAsync,
-} from '../../common/helpers';
+} = require('../../common/helpers');
 
-export default async function assetsEndpoint(req: NextApiRequest, res: NextApiResponse) {
+export default async function assetsEndpoint(req, res) {
   const { asset: assetName, runtimeVersion, platform } = req.query;
 
   if (!assetName || typeof assetName !== 'string') {
@@ -31,10 +31,10 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
     return;
   }
 
-  let updateBundlePath: string;
+  let updateBundlePath;
   try {
     updateBundlePath = await getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion);
-  } catch (error: any) {
+  } catch (error) {
     res.statusCode = 404;
     res.json({
       error: error.message,
@@ -49,7 +49,7 @@ export default async function assetsEndpoint(req: NextApiRequest, res: NextApiRe
 
   const assetPath = path.resolve(assetName);
   const assetMetadata = metadataJson.fileMetadata[platform].assets.find(
-    (asset: any) => asset.path === assetName.replace(`${updateBundlePath}/`, '')
+    (asset) => asset.path === assetName.replace(`${updateBundlePath}/`, '')
   );
   const isLaunchAsset =
     metadataJson.fileMetadata[platform].bundle === assetName.replace(`${updateBundlePath}/`, '');

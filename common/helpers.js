@@ -1,21 +1,21 @@
-import crypto, { BinaryToTextEncoding } from 'crypto';
-import fsSync from 'fs';
-import fs from 'fs/promises';
-import mime from 'mime';
-import path from 'path';
-import { Dictionary } from 'structured-headers';
+const crypto = require('crypto');
+const fsSync = require('fs');
+const fs = require('fs/promises');
+const mime = require('mime');
+const path = require('path');
+const { Dictionary } = require('structured-headers');
 
-export class NoUpdateAvailableError extends Error {}
+class NoUpdateAvailableError extends Error {}
 
-function createHash(file: Buffer, hashingAlgorithm: string, encoding: BinaryToTextEncoding) {
+function createHash(file, hashingAlgorithm, encoding) {
   return crypto.createHash(hashingAlgorithm).update(file).digest(encoding);
 }
 
-function getBase64URLEncoding(base64EncodedString: string): string {
+function getBase64URLEncoding(base64EncodedString) {
   return base64EncodedString.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-export function convertToDictionaryItemsRepresentation(obj: { [key: string]: string }): Dictionary {
+function convertToDictionaryItemsRepresentation(obj) {
   return new Map(
     Object.entries(obj).map(([k, v]) => {
       return [k, [v, new Map()]];
@@ -23,14 +23,14 @@ export function convertToDictionaryItemsRepresentation(obj: { [key: string]: str
   );
 }
 
-export function signRSASHA256(data: string, privateKey: string) {
+function signRSASHA256(data, privateKey) {
   const sign = crypto.createSign('RSA-SHA256');
   sign.update(data, 'utf8');
   sign.end();
   return sign.sign(privateKey, 'base64');
 }
 
-export async function getPrivateKeyAsync() {
+async function getPrivateKeyAsync() {
   const privateKeyPath = process.env.PRIVATE_KEY_PATH;
   if (!privateKeyPath) {
     return null;
@@ -40,7 +40,7 @@ export async function getPrivateKeyAsync() {
   return pemBuffer.toString('utf8');
 }
 
-export async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion: string) {
+async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion) {
   const updatesDirectoryForRuntimeVersion = `updates/${runtimeVersion}`;
   if (!fsSync.existsSync(updatesDirectoryForRuntimeVersion)) {
     throw new Error('Unsupported runtime version');
@@ -60,25 +60,7 @@ export async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVer
   return path.join(updatesDirectoryForRuntimeVersion, directoriesInUpdatesDirectory[0]);
 }
 
-type GetAssetMetadataArg =
-  | {
-      updateBundlePath: string;
-      filePath: string;
-      ext: null;
-      isLaunchAsset: true;
-      runtimeVersion: string;
-      platform: string;
-    }
-  | {
-      updateBundlePath: string;
-      filePath: string;
-      ext: string;
-      isLaunchAsset: false;
-      runtimeVersion: string;
-      platform: string;
-    };
-
-export async function getAssetMetadataAsync(arg: GetAssetMetadataArg) {
+async function getAssetMetadataAsync(arg) {
   const assetFilePath = `${arg.updateBundlePath}/${arg.filePath}`;
   const asset = await fs.readFile(path.resolve(assetFilePath), null);
   const assetHash = getBase64URLEncoding(createHash(asset, 'sha256', 'base64'));
@@ -91,11 +73,11 @@ export async function getAssetMetadataAsync(arg: GetAssetMetadataArg) {
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url: `${process.env.HOSTNAME}/api/assets?asset=${assetFilePath}&runtimeVersion=${arg.runtimeVersion}&platform=${arg.platform}`,
+    url: `${arg.serverAddress}/api/assets?asset=${assetFilePath}&runtimeVersion=${arg.runtimeVersion}&platform=${arg.platform}`,
   };
 }
 
-export async function createRollBackDirectiveAsync(updateBundlePath: string) {
+async function createRollBackDirectiveAsync(updateBundlePath) {
   try {
     const rollbackFilePath = `${updateBundlePath}/rollback`;
     const rollbackFileStat = await fs.stat(rollbackFilePath);
@@ -110,19 +92,13 @@ export async function createRollBackDirectiveAsync(updateBundlePath: string) {
   }
 }
 
-export async function createNoUpdateAvailableDirectiveAsync() {
+async function createNoUpdateAvailableDirectiveAsync() {
   return {
     type: 'noUpdateAvailable',
   };
 }
 
-export async function getMetadataAsync({
-  updateBundlePath,
-  runtimeVersion,
-}: {
-  updateBundlePath: string;
-  runtimeVersion: string;
-}) {
+async function getMetadataAsync({ updateBundlePath, runtimeVersion }) {
   try {
     const metadataPath = `${updateBundlePath}/metadata.json`;
     const updateMetadataBuffer = await fs.readFile(path.resolve(metadataPath), null);
@@ -139,19 +115,7 @@ export async function getMetadataAsync({
   }
 }
 
-/**
- * This adds the `@expo/config`-exported config to `extra.expoConfig`, which is a common thing
- * done by implementors of the expo-updates specification since a lot of Expo modules use it.
- * It is not required by the specification, but is included here in the example client and server
- * for demonstration purposes. EAS Update does something conceptually very similar.
- */
-export async function getExpoConfigAsync({
-  updateBundlePath,
-  runtimeVersion,
-}: {
-  updateBundlePath: string;
-  runtimeVersion: string;
-}): Promise<any> {
+async function getExpoConfigAsync({ updateBundlePath, runtimeVersion }) {
   try {
     const expoConfigPath = `${updateBundlePath}/expoConfig.json`;
     const expoConfigBuffer = await fs.readFile(path.resolve(expoConfigPath), null);
@@ -164,13 +128,30 @@ export async function getExpoConfigAsync({
   }
 }
 
-export function convertSHA256HashToUUID(value: string) {
+function convertSHA256HashToUUID(value) {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(
     16,
     20
   )}-${value.slice(20, 32)}`;
 }
 
-export function truthy<TValue>(value: TValue | null | undefined): value is TValue {
+function truthy(value) {
   return !!value;
 }
+
+module.exports = {
+  NoUpdateAvailableError,
+  createHash,
+  getBase64URLEncoding,
+  convertToDictionaryItemsRepresentation,
+  signRSASHA256,
+  getPrivateKeyAsync,
+  getLatestUpdateBundlePathForRuntimeVersionAsync,
+  getAssetMetadataAsync,
+  createRollBackDirectiveAsync,
+  createNoUpdateAvailableDirectiveAsync,
+  getMetadataAsync,
+  getExpoConfigAsync,
+  convertSHA256HashToUUID,
+  truthy,
+};
