@@ -71,13 +71,15 @@ async function githubFetch(url) {
   return res.json();
 }
 
-async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion) {
-  const contentsUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/updates/${runtimeVersion}`;
+async function getLatestUpdateBundlePathAsync(runtimeVersion, channel) {
+  const contentsUrl = `${GITHUB_API_URL}/repos/${UPDATES_REPO_OWNER}/${UPDATES_REPO_NAME}/contents/updates/${runtimeVersion}/${channel}`;
   try {
     const directories = await githubFetch(contentsUrl);
 
     if (!Array.isArray(directories) || directories.length === 0) {
-      throw new Error(`Unsupported runtime version: ${runtimeVersion}`);
+      throw new Error(
+        `Unsupported runtime version or channel: ${runtimeVersion}/${channel}`
+      );
     }
 
     const sortedTimestamps = directories
@@ -87,13 +89,15 @@ async function getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion) {
 
     if (sortedTimestamps.length === 0) {
       throw new Error(
-        `No valid update directories found for runtime version: ${runtimeVersion}`
+        `No valid update directories found for runtime version: ${runtimeVersion} on channel: ${channel}`
       );
     }
 
-    return `updates/${runtimeVersion}/${sortedTimestamps[0]}`;
+    return `updates/${runtimeVersion}/${channel}/${sortedTimestamps[0]}`;
   } catch {
-    throw new Error(`No updates found for runtime version: ${runtimeVersion}`);
+    throw new Error(
+      `No updates found for runtime version: ${runtimeVersion} on channel: ${channel}`
+    );
   }
 }
 
@@ -117,7 +121,7 @@ async function getAssetMetadataAsync(arg) {
     key,
     fileExtension: `.${keyExtensionSuffix}`,
     contentType,
-    url: `${arg.serverAddress}/api/assets?asset=${assetQuery}&platform=${arg.platform}&runtimeVersion=${arg.runtimeVersion}`,
+    url: `${arg.serverAddress}/api/assets?asset=${assetQuery}&platform=${arg.platform}`,
   };
 }
 
@@ -202,7 +206,7 @@ module.exports = {
   convertToDictionaryItemsRepresentation,
   signRSASHA256,
   getPrivateKeyAsync,
-  getLatestUpdateBundlePathForRuntimeVersionAsync,
+  getLatestUpdateBundlePathAsync,
   getAssetMetadataAsync,
   createRollBackDirectiveAsync,
   createNoUpdateAvailableDirectiveAsync,

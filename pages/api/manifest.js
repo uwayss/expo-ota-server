@@ -10,7 +10,7 @@ const {
   signRSASHA256,
   getPrivateKeyAsync,
   getExpoConfigAsync,
-  getLatestUpdateBundlePathForRuntimeVersionAsync,
+  getLatestUpdateBundlePathAsync,
   createRollBackDirectiveAsync,
   NoUpdateAvailableError,
   createNoUpdateAvailableDirectiveAsync,
@@ -77,7 +77,6 @@ async function putUpdateInResponseAsync(
           updateBundlePath,
           filePath: asset.path,
           ext: asset.ext,
-          runtimeVersion,
           platform,
           isLaunchAsset: false,
           serverAddress,
@@ -88,7 +87,6 @@ async function putUpdateInResponseAsync(
       updateBundlePath,
       filePath: platformSpecificMetadata.bundle,
       isLaunchAsset: true,
-      runtimeVersion,
       platform,
       ext: null,
       serverAddress,
@@ -308,9 +306,13 @@ async function manifestEndpoint(req, res) {
     return;
   }
 
+  const channel = req.headers["expo-update-channel"] ?? "production";
+
   try {
-    const updateBundlePath =
-      await getLatestUpdateBundlePathForRuntimeVersionAsync(runtimeVersion);
+    const updateBundlePath = await getLatestUpdateBundlePathAsync(
+      runtimeVersion,
+      channel
+    );
     const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
     if (updateType === UpdateType.NORMAL_UPDATE) {
