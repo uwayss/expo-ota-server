@@ -1,3 +1,4 @@
+// C:\Users\Muhammed\Code\expo-ota-server\pages\api\manifest.js
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 const { serializeDictionary } = require("structured-headers");
@@ -307,6 +308,7 @@ async function manifestEndpoint(req, res) {
   }
 
   const channel = req.headers["expo-update-channel"] ?? "production";
+  console.warn(`Request for runtime ${runtimeVersion} on channel '${channel}'`);
 
   try {
     const updateBundlePath = await getLatestUpdateBundlePathAsync(
@@ -316,6 +318,9 @@ async function manifestEndpoint(req, res) {
     const updateType = await getTypeOfUpdateAsync(updateBundlePath);
 
     if (updateType === UpdateType.NORMAL_UPDATE) {
+      console.warn(
+        `Found normal update at ${updateBundlePath}, sending manifest.`
+      );
       await putUpdateInResponseAsync(
         req,
         res,
@@ -326,6 +331,7 @@ async function manifestEndpoint(req, res) {
         serverAddress
       );
     } else if (updateType === UpdateType.ROLLBACK) {
+      console.warn(`Found rollback at ${updateBundlePath}, sending directive.`);
       await putRollBackInResponseAsync(
         req,
         res,
@@ -335,9 +341,12 @@ async function manifestEndpoint(req, res) {
     }
   } catch (error) {
     if (error instanceof NoUpdateAvailableError) {
+      console.warn(
+        "Client is up to date, sending NoUpdateAvailable directive."
+      );
       await putNoUpdateAvailableInResponseAsync(req, res, protocolVersion);
     } else {
-      console.error(error);
+      console.warn(`Error finding update: ${error.message}`);
       res.statusCode = 404;
       res.json({ error: error.message });
     }

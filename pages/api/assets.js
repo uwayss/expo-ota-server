@@ -1,4 +1,4 @@
-// FILE: pages/api/assets.js
+// C:\Users\Muhammed\Code\expo-ota-server\pages\api\assets.js
 const mime = require("mime");
 const fetch = require("node-fetch");
 
@@ -23,8 +23,9 @@ async function assetsEndpoint(req, res) {
 
   try {
     const assetPath = Buffer.from(asset, "base64").toString("utf-8");
-    const extension = assetPath.split(".").pop();
+    console.warn(`Asset requested: ${assetPath}`);
 
+    const extension = assetPath.split(".").pop();
     const isLaunchAsset = extension === "bundle";
 
     let contentType;
@@ -49,7 +50,7 @@ async function assetsEndpoint(req, res) {
     res.setHeader("content-type", contentType);
     response.body.pipe(res);
   } catch (error) {
-    console.error(error);
+    console.warn(`Error streaming asset: ${error.message}`);
     res.statusCode = 500;
     res.json({ error: error.message });
   }
