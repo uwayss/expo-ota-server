@@ -72,6 +72,14 @@ async function putUpdateInResponseAsync(
     id: convertSHA256HashToUUID(id),
     createdAt,
     runtimeVersion,
+    launchAsset: await getAssetMetadataAsync({
+      updateBundlePath,
+      filePath: platformSpecificMetadata.bundle,
+      isLaunchAsset: true,
+      platform,
+      ext: null,
+      serverAddress,
+    }),
     assets: await Promise.all(
       platformSpecificMetadata.assets.map((asset) =>
         getAssetMetadataAsync({
@@ -84,17 +92,9 @@ async function putUpdateInResponseAsync(
         })
       )
     ),
-    launchAsset: await getAssetMetadataAsync({
-      updateBundlePath,
-      filePath: platformSpecificMetadata.bundle,
-      isLaunchAsset: true,
-      platform,
-      ext: null,
-      serverAddress,
-    }),
     metadata: {},
     extra: {
-      expoClient: expoConfig,
+      expoClient: { ...expoConfig, channel: metadataJson.channel },
     },
   };
 
@@ -307,7 +307,7 @@ async function manifestEndpoint(req, res) {
     return;
   }
 
-  const channel = req.headers["expo-update-channel"] ?? "production";
+  const channel = req.query.channel ?? "production";
   console.warn(`Request for runtime ${runtimeVersion} on channel '${channel}'`);
 
   try {
